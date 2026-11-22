@@ -184,6 +184,24 @@
       .pass-input:focus { outline: 2px solid var(--green-2); outline-offset: 1px; border-color: transparent; }
       .pass-hint { color: var(--ink-soft); font-size: .85rem; margin-top: .4rem; }
 
+      .field-block { margin-bottom: 1rem; }
+      .field-label { display: block; font-weight: 600; color: var(--green-2); margin-bottom: .4rem; }
+      .num-input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--ink);
+        font: inherit;
+        padding: .7rem .8rem;
+        direction: ltr;
+        text-align: left;
+      }
+      .num-input:focus { outline: 2px solid var(--green-2); outline-offset: 1px; border-color: transparent; }
+      .field-hint { color: var(--ink-soft); font-size: .85rem; margin-top: .4rem; }
+      .delay-row { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+      .delay-row .sub { display: block; font-size: .85rem; color: var(--ink-soft); margin-bottom: .3rem; font-weight: 600; }
+
       .send-card { border-color: var(--green); }
       .estimate { color: var(--ink-soft); font-size: .92rem; margin: 0 0 .9rem; }
       .estimate b { color: var(--ink); }
@@ -226,7 +244,7 @@
         <p>ارفع ملف أرقام العملاء، اكتب الرسالة، وابدأ الإرسال من رقم المحل. الرسايل بتتبعت بالتدريج على فترات عشوائية بين كل رسالة والتانية، والردود بتوصل على Chatwoot زي ما هي — الصفحة دي للإرسال بس.</p>
         <div class="head-badges">
           <span class="badge">الإرسال من: <b>رقم المحل</b></span>
-          <span class="badge">الفاصل بين الرسايل: <b>٢–٥ دقايق عشوائي</b></span>
+          <span class="badge">الفاصل بين الرسايل: <b id="delayBadgeVal">١٢٠–٣٠٠ ثانية عشوائي</b></span>
           <span class="badge">حجم الحملة المعتاد: <b>٣٥–٥٠ عميل</b></span>
         </div>
       </header>
@@ -298,6 +316,25 @@
           <input class="pass-input" type="password" id="passBox" autocomplete="off" placeholder="اكتب كلمة السر هنا…" />
           <p class="pass-hint">الإرسال مش هيبدأ من غير كلمة السر — بتتبعت مع الحملة للتحقق منها.</p>
         </div>
+        <div class="field-block">
+          <label class="field-label" for="limitBox">عدد الأرقام اللي هتتبعت</label>
+          <input class="num-input" type="number" id="limitBox" min="1" step="1" inputmode="numeric" placeholder="سيبها فاضية للإرسال لكل الأرقام الصالحة" />
+          <p class="field-hint">لو كتبت رقم، الإرسال هيكون لأول أرقام صالحة بالعدد ده بس — والباقي هيتخطى المرة دي.</p>
+        </div>
+        <div class="field-block">
+          <span class="field-label" id="delayLabel">الانتظار بين كل رسالة والتانية (بالثواني)</span>
+          <div class="delay-row" role="group" aria-labelledby="delayLabel">
+            <div>
+              <label class="sub" for="delayMinBox">من</label>
+              <input class="num-input" type="number" id="delayMinBox" min="60" step="10" value="120" inputmode="numeric" />
+            </div>
+            <div>
+              <label class="sub" for="delayMaxBox">إلى</label>
+              <input class="num-input" type="number" id="delayMaxBox" min="60" step="10" value="300" inputmode="numeric" />
+            </div>
+          </div>
+          <p class="field-hint">كل رسالة بتستنى مدة عشوائية بين القيمتين دول قبل ما تتبعت. أقل قيمة مسموحة ٦٠ ثانية — أي قيمة أقل من كده هتتحسب ٦٠.</p>
+        </div>
         <p class="estimate" id="estimate">ضيف الأرقام والرسالة الأول عشان يظهر ملخص الحملة هنا.</p>
         <button type="button" class="btn btn-start" id="startBtn" disabled>ابدأ الإرسال</button>
         <p class="send-note">أول دوسة بتجهّز التأكيد، والتانية هي اللي بتبدأ الإرسال فعليًا — مفيش حاجة بتتبعت قبل التأكيد.</p>
@@ -329,6 +366,10 @@
         var pasteBox = document.getElementById("pasteBox");
         var msgBox = document.getElementById("msgBox");
         var passBox = document.getElementById("passBox");
+        var limitBox = document.getElementById("limitBox");
+        var delayMinBox = document.getElementById("delayMinBox");
+        var delayMaxBox = document.getElementById("delayMaxBox");
+        var delayBadgeVal = document.getElementById("delayBadgeVal");
         var charCount = document.getElementById("charCount");
         var stats = document.getElementById("stats");
         var stTotal = document.getElementById("stTotal");
@@ -400,6 +441,23 @@
                         .map(function (e) { return e.normalized; });
         }
 
+        // Campaign settings: how many numbers to send to, and the random
+        // delay window (seconds) between messages. Delays are clamped to
+        // a 60s floor; an empty/invalid limit means "all valid numbers".
+        function getSettings() {
+          var valid = validNumbers().length;
+          var limitRaw = parseInt(limitBox.value, 10);
+          var limit = (!isNaN(limitRaw) && limitRaw > 0) ? Math.min(limitRaw, valid) : valid;
+          var dMin = parseInt(delayMinBox.value, 10);
+          var dMax = parseInt(delayMaxBox.value, 10);
+          if (isNaN(dMin)) dMin = 120;
+          if (isNaN(dMax)) dMax = 300;
+          dMin = Math.max(60, dMin);
+          dMax = Math.max(60, dMax);
+          if (dMax < dMin) dMax = dMin;
+          return { limit: limit, delayMin: dMin, delayMax: dMax };
+        }
+
         function fmtDuration(sec) {
           if (sec < 60) return "أقل من دقيقة";
           var min = Math.round(sec / 60);
@@ -448,12 +506,19 @@
 
           charCount.textContent = msgBox.value.length + " حرف";
 
+          var settings = getSettings();
+          delayBadgeVal.textContent = settings.delayMin + "–" + settings.delayMax + " ثانية عشوائي";
+
           var hasMsg = msgBox.value.trim().length > 0;
           var hasPass = passBox.value.length > 0;
           if (valid > 0 && hasMsg && hasPass) {
-            var lo = (valid - 1) * 120, hi = (valid - 1) * 300;
-            estimate.innerHTML = "الحملة هتتبعت لـ <b>" + valid + " رقم</b> من رقم المحل، بفاصل عشوائي ٢–٥ دقايق بين كل رسالة — الوقت الكلي التقريبي: <b>" +
-              (valid === 1 ? "رسالة واحدة على طول" : "من " + fmtDuration(lo) + " لـ " + fmtDuration(hi)) + "</b>.";
+            var sendCount = settings.limit;
+            var lo = (sendCount - 1) * settings.delayMin, hi = (sendCount - 1) * settings.delayMax;
+            var avg = sendCount * ((settings.delayMin + settings.delayMax) / 2);
+            estimate.innerHTML = "الحملة هتتبعت لـ <b>" + sendCount + " رقم</b>" +
+              (sendCount < valid ? " من أصل <b>" + valid + "</b> رقم صالح" : "") +
+              " من رقم المحل، بفاصل عشوائي من <b>" + settings.delayMin + "</b> لـ <b>" + settings.delayMax + "</b> ثانية بين كل رسالة — الوقت الكلي التقريبي: <b>" +
+              (sendCount === 1 ? "رسالة واحدة على طول" : "من " + fmtDuration(lo) + " لـ " + fmtDuration(hi) + " (حوالي " + fmtDuration(avg) + " في المتوسط)") + "</b>.";
             startBtn.disabled = sending;
           } else {
             estimate.textContent = valid === 0
@@ -478,6 +543,9 @@
         pasteBox.addEventListener("input", refreshFromSources);
         msgBox.addEventListener("input", render);
         passBox.addEventListener("input", render);
+        limitBox.addEventListener("input", render);
+        delayMinBox.addEventListener("input", render);
+        delayMaxBox.addEventListener("input", render);
 
         function handleFile(file) {
           if (!file) return;
@@ -551,6 +619,9 @@
           pasteBox.value = "";
           msgBox.value = "";
           passBox.value = "";
+          limitBox.value = "";
+          delayMinBox.value = "120";
+          delayMaxBox.value = "300";
           rebuildEntries([]);
           hideResult();
         });
@@ -568,7 +639,8 @@
 
         startBtn.addEventListener("click", function () {
           if (sending) return;
-          var nums = validNumbers();
+          var settings = getSettings();
+          var nums = validNumbers().slice(0, settings.limit);
           var msg = msgBox.value.trim();
           var password = passBox.value;
           if (!nums.length || !msg || !password) return;
@@ -585,7 +657,14 @@
           startBtn.classList.remove("confirm");
           startBtn.textContent = "بيتم بدء الحملة…";
 
-          var payload = { message: msg, numbers: nums, password: password };
+          var payload = {
+            message: msg,
+            numbers: nums,
+            password: password,
+            limit: settings.limit,
+            delayMin: settings.delayMin,
+            delayMax: settings.delayMax
+          };
 
           function onOk(data) {
             sending = false;
