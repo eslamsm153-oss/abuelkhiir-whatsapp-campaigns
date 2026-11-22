@@ -168,6 +168,22 @@
       .btn:disabled { opacity: .55; cursor: not-allowed; }
       .btn.ghost-danger { color: var(--danger); }
 
+      .pass-block { margin-bottom: 1rem; }
+      .pass-label { display: block; font-weight: 600; color: var(--green-2); margin-bottom: .4rem; }
+      .pass-input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--surface);
+        color: var(--ink);
+        font: inherit;
+        padding: .7rem .8rem;
+        direction: ltr;
+        text-align: left;
+      }
+      .pass-input:focus { outline: 2px solid var(--green-2); outline-offset: 1px; border-color: transparent; }
+      .pass-hint { color: var(--ink-soft); font-size: .85rem; margin-top: .4rem; }
+
       .send-card { border-color: var(--green); }
       .estimate { color: var(--ink-soft); font-size: .92rem; margin: 0 0 .9rem; }
       .estimate b { color: var(--ink); }
@@ -277,6 +293,11 @@
           <span class="step-num">3</span>
           <h2 id="h-step3">بدء الإرسال</h2>
         </div>
+        <div class="pass-block">
+          <label class="pass-label" for="passBox">كلمة سر الإرسال</label>
+          <input class="pass-input" type="password" id="passBox" autocomplete="off" placeholder="اكتب كلمة السر هنا…" />
+          <p class="pass-hint">الإرسال مش هيبدأ من غير كلمة السر — بتتبعت مع الحملة للتحقق منها.</p>
+        </div>
         <p class="estimate" id="estimate">ضيف الأرقام والرسالة الأول عشان يظهر ملخص الحملة هنا.</p>
         <button type="button" class="btn btn-start" id="startBtn" disabled>ابدأ الإرسال</button>
         <p class="send-note">أول دوسة بتجهّز التأكيد، والتانية هي اللي بتبدأ الإرسال فعليًا — مفيش حاجة بتتبعت قبل التأكيد.</p>
@@ -307,6 +328,7 @@
         var fileName = document.getElementById("fileName");
         var pasteBox = document.getElementById("pasteBox");
         var msgBox = document.getElementById("msgBox");
+        var passBox = document.getElementById("passBox");
         var charCount = document.getElementById("charCount");
         var stats = document.getElementById("stats");
         var stTotal = document.getElementById("stTotal");
@@ -427,7 +449,8 @@
           charCount.textContent = msgBox.value.length + " حرف";
 
           var hasMsg = msgBox.value.trim().length > 0;
-          if (valid > 0 && hasMsg) {
+          var hasPass = passBox.value.length > 0;
+          if (valid > 0 && hasMsg && hasPass) {
             var lo = (valid - 1) * 120, hi = (valid - 1) * 300;
             estimate.innerHTML = "الحملة هتتبعت لـ <b>" + valid + " رقم</b> من رقم المحل، بفاصل عشوائي ٢–٥ دقايق بين كل رسالة — الوقت الكلي التقريبي: <b>" +
               (valid === 1 ? "رسالة واحدة على طول" : "من " + fmtDuration(lo) + " لـ " + fmtDuration(hi)) + "</b>.";
@@ -435,7 +458,9 @@
           } else {
             estimate.textContent = valid === 0
               ? "ضيف أرقام صالحة الأول (من ملف أو لصق) عشان تقدر تبدأ."
-              : "اكتب نص الرسالة عشان تقدر تبدأ.";
+              : !hasMsg
+                ? "اكتب نص الرسالة عشان تقدر تبدأ."
+                : "اكتب كلمة سر الإرسال عشان تقدر تبدأ.";
             startBtn.disabled = true;
           }
           if (!sending) disarmConfirm();
@@ -452,6 +477,7 @@
 
         pasteBox.addEventListener("input", refreshFromSources);
         msgBox.addEventListener("input", render);
+        passBox.addEventListener("input", render);
 
         function handleFile(file) {
           if (!file) return;
@@ -524,6 +550,7 @@
           fileName.textContent = "";
           pasteBox.value = "";
           msgBox.value = "";
+          passBox.value = "";
           rebuildEntries([]);
           hideResult();
         });
@@ -543,7 +570,8 @@
           if (sending) return;
           var nums = validNumbers();
           var msg = msgBox.value.trim();
-          if (!nums.length || !msg) return;
+          var password = passBox.value;
+          if (!nums.length || !msg || !password) return;
 
           if (!confirmArmed) {
             confirmArmed = true;
@@ -557,7 +585,7 @@
           startBtn.classList.remove("confirm");
           startBtn.textContent = "بيتم بدء الحملة…";
 
-          var payload = { message: msg, numbers: nums };
+          var payload = { message: msg, numbers: nums, password: password };
 
           function onOk(data) {
             sending = false;
@@ -584,6 +612,9 @@
             if (status === 404) {
               showResult("error", "الحملة مبدأتش — الورك فلو مش مفعّل",
                 "لازم ورك فلو «حملات واتساب أبو الخير» في n8n يكون مفعّل (Active) عشان الصفحة تقدر تبدأ حملة. فعّله وحاول تاني.");
+            } else if (status === 401 || status === 403) {
+              showResult("error", "الحملة مبدأتش — كلمة السر غلط",
+                "كلمة السر اللي كتبتها مش صح. راجعها وحاول تاني — مفيش أي رسالة اتبعتت.");
             } else {
               showResult("error", "الحملة مبدأتش",
                 "حصلت مشكلة في الاتصال بخدمة الإرسال (كود " + status + "). اتأكد إن الورك فلو مفعّل في n8n وحاول تاني.");
